@@ -2192,6 +2192,8 @@ class Api(object):
         limit: Optional[int] = 25,
         page_token: Optional[str] = None,
         return_json: Optional[bool] = False,
+        publishedBefore:Optional[str]=None,
+        publishedAfter:Optional[str]=None,
         **kwargs: Optional[dict],
     ) -> Union[SearchListResponse, dict]:
         """
@@ -2250,6 +2252,8 @@ class Api(object):
             limit=limit,
             page_token=page_token,
             return_json=return_json,
+            publishedBefore:Optional[str]=None,
+            publishedAfter:Optional[str]=None,
             **kwargs,
         )
 
