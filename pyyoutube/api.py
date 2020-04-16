@@ -443,6 +443,7 @@ class Api(object):
             if page_token is not None:
                 args["pageToken"] = page_token
 
+            print('search request:',args["publishedAfter"],'#~#',args["publishedBefore"])
             resp = self._request(resource=resource, method="GET", args=args)
             data = self._parse_response(resp)  # origin response
             # set page token
@@ -451,8 +452,11 @@ class Api(object):
 
             # parse results.
             items = self._parse_data(data)
-            current_items.extend(items)
+            current_items.extend(items) 
+            print('current page items:',len(items),'개')
             now_items_count += len(items)
+            if len(items) < 1:
+                break
             if res_data is None:
                 res_data = data
             # first check the count if satisfies.
@@ -462,6 +466,7 @@ class Api(object):
                     break
             # if have no page token, mean no more data.
             if page_token is None:
+                print('page token is None')
                 break
         res_data["items"] = current_items
 
@@ -2252,8 +2257,8 @@ class Api(object):
             limit=limit,
             page_token=page_token,
             return_json=return_json,
-            publishedBefore:Optional[str]=None,
-            publishedAfter:Optional[str]=None,
+            publishedBefore=publishedBefore,
+            publishedAfter=publishedAfter,
             **kwargs,
         )
 
