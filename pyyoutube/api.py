@@ -351,6 +351,7 @@ class Api(object):
                 )
             )
 
+
         if enforce_auth:
             if method == "POST" and key not in post_args:
                 post_args[key] = access_token
@@ -415,6 +416,87 @@ class Api(object):
         else:
             return UserProfile.from_dict(data)
 
+    def paged_by_page_token_customizedByJH(
+        self, resource: str, args: dict, count: Optional[int] = None,
+    ):
+        """
+        Response paged by response's page token. If not provide response token
+
+        Args:
+            resource (str):
+                The resource string need to retrieve data.
+            args (dict)
+                The args for api.
+            count (int, optional):
+                The count for result items you want to get.
+                If provide this with None, will retrieve all items.
+                Note:
+                    The all items maybe too much. Notice your app's cost.
+        Returns:
+            Data api origin response.
+        """
+        res_data: Optional[dict] = None
+        current_items: List[dict] = []
+        page_token: Optional[str] = None
+        now_items_count: int = 0
+        loopindex=0
+        while True:
+            loopindex +=1
+            #page token 이 user로 부터 넘어오면 해당 page 부터 검색을 시작, 
+            #다음 page 부터는 google api 로 부터 return 되는 page_token으로 setting 해서 request 를 보낸다.
+            print('0. api.py search loop:',loopindex,' 기간:',args["publishedAfter"],'#~#',args["publishedBefore"])
+            if page_token is not None:
+                args["pageToken"] = page_token
+                print('1. api.py pageToken:',args["pageToken"])
+            else:
+                print('1. api.py pageToken:',"None")
+
+            
+            
+            resp = self._request(resource=resource, method="GET", args=args)
+ 
+            data = resp.json()
+            if "error" in data:
+                print('2. error in data:',data)
+                return {'result':False,'data':res_data,'error':data}
+                break
+            data = self._parse_response(resp)  # origin response
+              
+            # set page token
+            page_token = data.get("nextPageToken")
+            prev_page_token = data.get("prevPageToken")
+
+            # parse results.
+            items = self._parse_data(data)
+            
+            print('3. current page items:',len(items),'개')
+            now_items_count += len(items)
+            
+            current_items.extend(items) 
+            if res_data is None:
+                res_data = data
+            # first check the count if satisfies.
+            if count is not None:
+                if now_items_count >= count:
+                    current_items = current_items[:count]
+                    break
+            # if have no page token, mean no more data.
+            if page_token is None:
+                print('4. page token is None')
+                break
+            if len(items) < 1:
+                print('5. no items')
+                break
+
+        res_data["items"] = current_items
+
+        # use last request page token
+        # 중간 중간 생성되는 page token은 날리고 마지막 page token만 return 시킨다.
+        res_data["nextPageToken"] = page_token
+        res_data["prevPageToken"] = prev_page_token
+        print('######################')
+        return {'result':True,'data':res_data,'error':False}
+
     def paged_by_page_token(
         self, resource: str, args: dict, count: Optional[int] = None,
     ):
@@ -440,23 +522,26 @@ class Api(object):
         now_items_count: int = 0
 
         while True:
+
             if page_token is not None:
                 args["pageToken"] = page_token
+              
 
-            print('search request:',args["publishedAfter"],'#~#',args["publishedBefore"])
             resp = self._request(resource=resource, method="GET", args=args)
+            
             data = self._parse_response(resp)  # origin response
+             
             # set page token
             page_token = data.get("nextPageToken")
             prev_page_token = data.get("prevPageToken")
 
             # parse results.
             items = self._parse_data(data)
-            current_items.extend(items) 
-            print('current page items:',len(items),'개')
+            
             now_items_count += len(items)
             if len(items) < 1:
                 break
+            current_items.extend(items) 
             if res_data is None:
                 res_data = data
             # first check the count if satisfies.
@@ -466,7 +551,7 @@ class Api(object):
                     break
             # if have no page token, mean no more data.
             if page_token is None:
-                print('page token is None')
+                #print('page token is None')
                 break
         res_data["items"] = current_items
 
@@ -1050,6 +1135,134 @@ class Api(object):
             return data
         else:
             return CommentThreadListResponse.from_dict(data)
+
+    def get_comment_threads_customizedByJH(
+        self,
+        *,
+        all_to_channel_id: Optional[str] = None,
+        channel_id: Optional[str] = None,
+        video_id: Optional[str] = None,
+        parts: Optional[Union[str, list, tuple, set]] = None,
+        moderation_status: Optional[str] = None,
+        order: Optional[str] = None,
+        search_terms: Optional[str] = None,
+        text_format: Optional[str] = "html",
+        count: Optional[int] = 20,
+        limit: Optional[int] = 20,
+        page_token: Optional[str] = None,
+        return_json: Optional[bool] = False,
+    ):
+        """
+        Retrieve the comment threads info by given filter condition.
+
+        Args:
+            all_to_channel_id (str, optional):
+                If you provide this with a channel id, will return all comment threads associated with the channel.
+                The response can include comments about the channel or about the channel's videos.
+            channel_id (str, optional):
+                If you provide this with a channel id, will return the comment threads associated with the channel.
+                But the response not include comments about the channel's videos.
+            video_id  (str, optional):
+                If you provide this with a video id, will return the comment threads associated with the video.
+            parts ((str,list,tuple,set), optional)
+                The resource parts for you want to retrieve.
+                If not provide, use default public parts.
+                You can pass this with single part str, comma-separated parts str or a list,tuple,set of parts.
+            moderation_status (str, optional):
+                This parameter must used with authorization.
+                If you provide this. the response will return comment threads match this filter only.
+                Acceptable values are:
+                    - heldForReview: Retrieve comment threads that are awaiting review by a moderator.
+                    - likelySpam: Retrieve comment threads classified as likely to be spam.
+                    - published: Retrieve threads of published comments. this is default for all.
+                See more: https://developers.google.com/youtube/v3/docs/commentThreads/list#parameters
+            order (str, optional):
+                Order parameter specifies the order in which the API response should list comment threads.
+                Acceptable values are:
+                    - time: Comment threads are ordered by time. This is the default behavior.
+                    - relevance: Comment threads are ordered by relevance.
+            search_terms (str, optional):
+                The searchTerms parameter instructs the API to limit the API response to only contain comments
+                that contain the specified search terms.
+            text_format (str, optional):
+                Comments left by users format style.
+                Acceptable values are: html, plainText.
+                Default is html.
+            count (int, optional):
+                The count will retrieve comment threads data.
+                Default is 20.
+                If provide this with None, will retrieve all comment threads.
+            limit (int, optional):
+                The maximum number of items each request retrieve.
+                For comment threads, this should not be more than 100.
+                Default is 20.
+            page_token(str, optional):
+                The token of the page of commentThreads result to retrieve.
+                You can use this retrieve point result page directly.
+                And you should know about the the result set for YouTube.
+            return_json(bool, optional):
+                The return data type. If you set True JSON data will be returned.
+                False will return a pyyoutube.CommentThreadListResponse instance.
+
+        Returns:
+            CommentThreadListResponse or original data
+        """
+
+        if count is None:
+            limit = 100  # for commentThreads the max limit for per request is 100
+        else:
+            limit = min(count, limit)
+
+        args = {
+            "part": enf_parts(resource="commentThreads", value=parts),
+            "maxResults": limit,
+            "textFormat": text_format,
+        }
+
+
+        if all_to_channel_id:
+            args["allThreadsRelatedToChannelId"] = (all_to_channel_id,)
+        elif channel_id:
+            args["channelId"] = channel_id
+        elif video_id:
+            args["videoId"] = video_id
+        else:
+            raise PyYouTubeException(
+                ErrorMessage(
+                    status_code=ErrorCode.MISSING_PARAMS,
+                    message=f"Specify at least one of all_to_channel_id, channel_id or video_id",
+                )
+            )
+
+        if moderation_status:
+            args["moderationStatus"] = moderation_status
+        if order:
+            args["order"] = order
+        if search_terms:
+            args["searchTerms"] = search_terms
+
+        if page_token is not None:
+            args["pageToken"] = page_token
+
+        googleRequestResult = self.paged_by_page_token_customizedByJH(
+            resource="commentThreads", args=args, count=count
+        )
+        res_data = googleRequestResult['data']
+        if res_data is None:
+            res_data={'items':{}}
+
+        if not googleRequestResult['result']:
+            error=googleRequestResult['error']
+            #print('paged_by_page_token return error:',error)
+
+        if return_json:
+            return {'result':googleRequestResult['result'],'data':res_data,'error':googleRequestResult['error']}
+        else:
+            #return CommentThreadListResponse.from_dict(res_data)
+            return {'result':googleRequestResult['result'],'data':CommentThreadListResponse.from_dict(res_data),'error':googleRequestResult['error']}
+
+
+        
 
     def get_comment_threads(
         self,
@@ -2073,6 +2286,134 @@ class Api(object):
         else:
             return VideoAbuseReportReasonListResponse.from_dict(data)
 
+    def search_customizedByJH(
+        self,
+        *,
+        parts: Optional[Union[str, list, tuple, set]] = None,
+        for_developer: Optional[bool] = None,
+        for_mine: Optional[bool] = None,
+        related_to_video_id: Optional[str] = None,
+        channel_id: Optional[str] = None,
+        channel_type: Optional[str] = None,
+        event_type: Optional[str] = None,
+        location: Optional[str] = None,
+        location_radius: Optional[str] = None,
+        count: Optional[int] = 10,
+        limit: Optional[int] = 10,
+        order: Optional[str] = None,
+        published_after: Optional[str] = None,
+        published_before: Optional[str] = None,
+        q: Optional[str] = None,
+        region_code: Optional[str] = None,
+        relevance_language: Optional[str] = None,
+        safe_search: Optional[str] = None,
+        topic_id: Optional[str] = None,
+        search_type: Optional[Union[str, list, tuple, set]] = None,
+        video_caption: Optional[str] = None,
+        video_category_id: Optional[str] = None,
+        video_definition: Optional[str] = None,
+        video_dimension: Optional[str] = None,
+        video_duration: Optional[str] = None,
+        video_embeddable: Optional[str] = None,
+        video_license: Optional[str] = None,
+        video_syndicated: Optional[str] = None,
+        video_type: Optional[str] = None,
+        page_token: Optional[str] = None,
+        return_json: Optional[bool] = False,
+    ) -> Union[SearchListResponse, dict]:
+        """
+        Main search api implementation.
+        You can find all parameters description at https://developers.google.com/youtube/v3/docs/search/list#parameters
+
+        Returns:
+            SearchListResponse or original data
+        """
+        parts = enf_parts(resource="search", value=parts)
+        if search_type is None:
+            search_type = "video,channel,playlist"
+        else:
+            search_type = enf_comma_separated(field="search_type", value=search_type)
+
+        args = {
+            "part": parts,
+            "maxResults": min(limit, count),
+        }
+        if for_developer:
+            args["forDeveloper"] = for_developer
+        if for_mine:
+            args["forMine"] = for_mine
+        if related_to_video_id:
+            args["relatedToVideoId"] = related_to_video_id
+        if channel_id:
+            args["channelId"] = channel_id
+        if channel_type:
+            args["channelType"] = channel_type
+        if event_type:
+            args["eventType"] = event_type
+        if location:
+            args["location"] = location
+        if location_radius:
+            args["locationRadius"] = location_radius
+        if order:
+            args["order"] = order
+        if published_after:
+            args["publishedAfter"] = published_after
+        if published_before:
+            args["publishedBefore"] = published_before
+        if q:
+            args["q"] = q
+        if region_code:
+            args["regionCode"] = region_code
+        if relevance_language:
+            args["relevanceLanguage"] = relevance_language
+        if safe_search:
+            args["safeSearch"] = safe_search
+        if topic_id:
+            args["topicId"] = topic_id
+        if search_type:
+            args["type"] = search_type
+        if video_caption:
+            args["videoCaption"] = video_caption
+        if video_category_id:
+            args["videoCategoryId"] = video_category_id
+        if video_definition:
+            args["videoDefinition"] = video_definition
+        if video_dimension:
+            args["videoDimension"] = video_dimension
+        if video_duration:
+            args["videoDuration"] = video_duration
+        if video_embeddable:
+            args["videoEmbeddable"] = video_embeddable
+        if video_license:
+            args["videoLicense"] = video_license
+        if video_syndicated:
+            args["videoSyndicated"] = video_syndicated
+        if video_type:
+            args["videoType"] = video_type
+        if page_token:
+            args["pageToken"] = page_token
+
+        googleRequestResult = self.paged_by_page_token_customizedByJH(resource="search", args=args, count=count)
+        res_data = googleRequestResult['data']
+        if res_data is None:
+            res_data={'items':{}}
+        if not googleRequestResult['result']:
+            error=googleRequestResult['error']
+            print('paged_by_page_token return error:',error)
+            
+            #if error['error']['code'] is 403 and error['error']['errors'][0]['reason'] is 'quotaExceeded': #quota exceeded
+                
+            #error['error']['code']
+            #error['error']['message']
+            #error['error']['errors'][0]['reason'] # keyInvalid
+
+        if return_json:
+            return {'result':googleRequestResult['result'],'data':res_data,'error':googleRequestResult['error']}
+            #return res_data
+        else:
+            return {'result':googleRequestResult['result'],'data':SearchListResponse.from_dict(res_data),'error':googleRequestResult['error']}
+            #return SearchListResponse.from_dict(res_data)
+
     def search(
         self,
         *,
@@ -2182,6 +2523,7 @@ class Api(object):
 
         res_data = self.paged_by_page_token(resource="search", args=args, count=count)
 
+       
         if return_json:
             return res_data
         else:
