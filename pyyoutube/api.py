@@ -444,7 +444,10 @@ class Api(object):
             loopindex +=1
             #page token 이 user로 부터 넘어오면 해당 page 부터 검색을 시작, 
             #다음 page 부터는 google api 로 부터 return 되는 page_token으로 setting 해서 request 를 보낸다.
-            print('0. api.py search loop:',loopindex,' 기간:',args["publishedAfter"],'#~#',args["publishedBefore"])
+            try:
+                print('0. api.py search loop:',loopindex,' 기간:',args["publishedAfter"],'#~#',args["publishedBefore"])
+            except:
+                print('0. api.py search loop:',loopindex)
             if page_token is not None:
                 args["pageToken"] = page_token
                 print('1. api.py pageToken:',args["pageToken"])
@@ -484,8 +487,11 @@ class Api(object):
             if page_token is None:
                 print('4. page token is None')
                 break
+
+            
             if len(items) < 1:
                 print('5. no items')
+                #page_token=None #item이 없다면 next_pagetoken을 None으로 return 한다.
                 break
 
         res_data["items"] = current_items
